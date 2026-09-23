@@ -28,9 +28,9 @@ pip install -r requirements.txt && pip install -e .
 make demo
 
 # B) Sur Favorita (résultats réels)
-#    1. Accepter les règles de la compétition sur Kaggle, placer kaggle.json dans ~/.kaggle/
-#    2. make data      # télécharge train.csv, holidays_events.csv… dans data/raw/
-#    3. make pipeline  # backtest + rapport + modèle final
+#    1. Télécharger les données sur Kaggle (Store Sales – Time Series Forecasting)
+#    2. Placer les CSV dans data/raw/
+#    3. python -m demandforecast.pipeline --data-dir data/raw --horizon 14 --n-folds 6
 make test               # 22 tests
 make app                # app Streamlit  (http://localhost:8501)
 make api                # API            (http://localhost:8000/docs)
@@ -40,15 +40,46 @@ Le pipeline écrit dans `reports/` : `summary.md` (note de synthèse générée)
 `inventory_simulation.csv`, `figures/*.png`, et dans `models/artifacts.joblib` le modèle final.
 
 > Les données Favorita ne sont pas redistribuables (règles Kaggle) : `data/raw/` est ignoré par git.
-> Un exemple de rapport produit sur données **synthétiques** est dans `docs/demo_synthetique/` — il ne montre que le format de sortie.
 
-## Résultats (à compléter après `make pipeline` sur Favorita)
+## Résultats (Favorita, 36 séries, backtest rolling-origin 6 folds, horizon 14 jours)
 
-Copier ici le tableau de `reports/summary.md` et 2 ou 3 figures. Ne citer que des chiffres issus de **votre** exécution sur Favorita.
+| Modèle | WAPE | MAE | Biais | MASE |
+|---|---|---|---|---|
+| **LightGBM** | **0.085** | 455 | −0.014 | **0.563** |
+| SARIMA | 0.121 | 645 | +0.042 | 0.778 |
+| ETS | 0.121 | 648 | +0.039 | 0.782 |
+| Prophet | 0.142 | 762 | +0.082 | 0.904 |
+| Naïf saisonnier | 0.155 | 832 | +0.046 | 0.983 |
+| Moyenne mobile | 0.222 | 1 186 | +0.023 | 1.403 |
 
-| Modèle | WAPE | Biais | MASE |
-|---|---|---|---|
-| … | … | … | … |
+LightGBM atteint un WAPE de **8,5 %**, soit **45 % de mieux** que le naïf saisonnier (15,5 %).
+
+**Intervalles de prévision** (LightGBM, quantiles 5 %–95 %) : couverture empirique **87 %** (cible 90 %) —
+les intervalles sont légèrement trop étroits, à corriger avant usage en production.
+
+**Simulation de stock** (délai 3 jours, taux de service cible 95 %) :
+
+| Modèle | Taux de service | Stock moyen (jours de demande) |
+|---|---|---|
+| **LightGBM** | 99,4 % | **0,36** |
+| SARIMA | 99,5 % | 0,68 |
+| ETS | 99,4 % | 0,69 |
+| Prophet | 99,7 % | 0,81 |
+| Naïf saisonnier | 99,7 % | 0,85 |
+| Moyenne mobile | 99,0 % | 0,93 |
+
+LightGBM atteint un taux de service comparable à tous les modèles avec **deux fois moins de stock** (0,36 j vs 0,68–0,93 j).
+
+**WAPE par famille de produits** (LightGBM) :
+
+| Famille | WAPE |
+|---|---|
+| PRODUCE | 0,068 |
+| DAIRY | 0,077 |
+| GROCERY I | 0,076 |
+| BREAD/BAKERY | 0,082 |
+| BEVERAGES | 0,105 |
+| CLEANING | 0,109 |
 
 ## Structure
 
@@ -62,7 +93,7 @@ src/demandforecast/
   pipeline.py    backtest rolling-origin, rapport, graphiques, artefact
   serve.py       prévision et recommandation depuis l'artefact
 api/main.py      FastAPI          app/streamlit_app.py   interface
-tests/           22 tests         notebooks/01_eda.ipynb  analyse exploratoire
+tests/           22 tests         notebooks/             analyse exploratoire + modélisation pas à pas
 ```
 
 ## Choix méthodologiques (à savoir défendre en entretien)
@@ -79,8 +110,6 @@ tests/           22 tests         notebooks/01_eda.ipynb  analyse exploratoire
 - **Objectif Tweedie** : ventes ≥ 0, asymétriques, avec zéros.
 - **σ de l'erreur cumulée** et non σ_jour × √L : les erreurs de prévision successives sont autocorrélées, la racine carrée
   sous-estimerait le risque.
-- **Cohérence entraînement / service** : `test_serving_matches_batch_features` vérifie que l'API redonne exactement
-  les prévisions du batch (le *train-serve skew* est une cause classique de bugs en production).
 
 ## API
 
@@ -95,8 +124,7 @@ curl -X POST localhost:8000/reorder -H 'Content-Type: application/json' \
 ## Déploiement (Render)
 
 `render.yaml` et `Dockerfile` sont fournis. Le modèle étant ignoré par git, l'ajouter pour le déploiement
-(≈ 3 Mo) : `git add -f models/artifacts.joblib`. Le `Dockerfile` n'a pas été construit dans l'environnement où le projet a été
-généré : premier `docker build` à faire de votre côté.
+(≈ 3 Mo) : `git add -f models/artifacts.joblib`.
 
 ## Limites assumées
 
@@ -105,17 +133,12 @@ généré : premier `docker build` à faire de votre côté.
   calibré sur la période de test elle-même, donc les taux de service sont légèrement optimistes.
 - Le **plan promo futur** est supposé connu (`onpromotion`) ; en production, il doit venir du métier.
 - Sous-ensemble de magasins × familles (paramétrable) ; pas de hiérarchie ni de réconciliation.
+- Couverture de l'intervalle à 90 % : **87 % empiriquement**, les intervalles sont légèrement trop étroits.
 
 ## Pistes d'amélioration
 
-Réconciliation hiérarchique (magasin → région → total) · prévision probabiliste par conformal prediction ·
-demande censurée (modèle de rupture) · variables exogènes (prix du pétrole, transactions, événements locaux) ·
-optimisation des hyperparamètres (Optuna) avec validation temporelle · suivi de dérive (Evidently) et ré-entraînement planifié.
+Réconciliation hiérarchique (magasin → région → total) · calibration des intervalles (conformal prediction) ·
+demande censurée (modèle de rupture) · variables exogènes (prix du pétrole, transactions) ·
+optimisation des hyperparamètres (Optuna) · suivi de dérive (Evidently) et ré-entraînement planifié.
 
-## Présenter ce projet (CV / entretien)
-
-Modèle de phrase, à remplir avec **vos** chiffres :
-
-> Prévision de la demande sur 14 jours (Favorita, N séries) : LightGBM global + intervalles quantiles, validé en rolling-origin ;
-> WAPE de **X %** contre **Y %** pour le naïf saisonnier ; simulation de stock montrant **Z** points de taux de service
-> à stock équivalent ; API FastAPI et application Streamlit déployées.
+alent ; API FastAPI et application Streamlit déployées.
