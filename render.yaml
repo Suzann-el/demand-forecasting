@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: demand-forecasting-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ARTIFACT_PATH
+        value: models/artifacts.joblib
