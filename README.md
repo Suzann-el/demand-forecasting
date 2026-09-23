@@ -96,7 +96,7 @@ api/main.py      FastAPI          app/streamlit_app.py   interface
 tests/           22 tests         notebooks/             analyse exploratoire + modélisation pas à pas
 ```
 
-## Choix méthodologiques (à savoir défendre en entretien)
+## Choix méthodologiques 
 
 - **Rolling-origin, jamais de split aléatoire** : en série temporelle, mélanger passé et futur fuit de l'information.
   Six origines consécutives donnent une estimation plus stable qu'un seul découpage.
@@ -126,7 +126,7 @@ curl -X POST localhost:8000/reorder -H 'Content-Type: application/json' \
 `render.yaml` et `Dockerfile` sont fournis. Le modèle étant ignoré par git, l'ajouter pour le déploiement
 (≈ 3 Mo) : `git add -f models/artifacts.joblib`.
 
-## Limites assumées
+## Limites du projet
 
 - Les **ventes ne sont pas la demande** : en cas de rupture, la demande réelle est censurée (le modèle apprend les zéros).
 - **Simulation de stock simplifiée** : délai fixe, pas de lot minimal ni de coût de commande ; le stock de sécurité est
