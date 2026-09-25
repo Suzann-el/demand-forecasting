@@ -4,6 +4,12 @@ Projet de data science de bout en bout sur le jeu **Favorita** (Kaggle, *Store S
 prévoir les ventes journalières par magasin et famille de produits, **quantifier l'incertitude**, puis
 **traduire la prévision en décision de stock** (stock de sécurité, point de commande) — et le mesurer par simulation.
 
+## API déployée
+
+🔗 **Documentation interactive** : https://demand-forecasting-1-hczj.onrender.com/docs
+
+> Note : le service est hébergé sur Render (plan gratuit) — prévoir 30–60 secondes de démarrage si l'API est en veille.
+
 > **Question business** : combien commander, et quand, pour servir la demande sans immobiliser de stock inutile ?
 
 ## Ce que fait le projet
